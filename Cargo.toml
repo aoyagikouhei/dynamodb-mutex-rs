@@ -11,4 +11,5 @@ rusoto_dynamodb = "~0.45.0"
 thiserror = "~1.0.22"
 
 [dev-dependencies]
+futures = "~0.3.8"
 tokio = {version="~0.2", features=["macros", "rt-core"]}

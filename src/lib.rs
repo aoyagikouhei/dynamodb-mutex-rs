@@ -187,13 +187,44 @@ impl ToString for DynamoDbMutexStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::{stream, StreamExt};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn it_works() -> Result<(), Error> {
         let mutex = DynamoDbMutex::new(Region::UsEast1, 10000, 10000, 10000, None);
         //mutex.make_table().await?;
-        mutex.lock("test").await?;
-        mutex.unlock("test", DynamoDbMutexStatus::Done).await?;
+        mutex.lock("test2").await?;
+        //mutex.unlock("test2", DynamoDbMutexStatus::Done).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn check_async() -> Result<(), Error> {
+        let ary = (0..10).collect::<Vec<u32>>();
+        let size = ary.len();
+        let list = stream::iter(ary);
+        let mutex = Arc::new(DynamoDbMutex::new(Region::UsEast1, 10000, 10000, 10000, None));
+        let res = list.map(|id| {
+            let mutex = Arc::clone(&mutex);
+            tokio::spawn(async move {
+                let res = match mutex.lock("test").await {
+                    Ok(_) => 1,
+                    Err(Error::ConditionFail) => 0,
+                    _ => -1
+                };
+                format!("{}:{}", id, res)
+            })
+        })
+        .buffer_unordered(size);
+        res
+            .for_each(|res| async move {
+                match res {
+                    Ok(res) => println!("{}", res),
+                    Err(e) => eprintln!("Got a tokio::JoinError: {}", e),
+                }
+            })
+            .await;
         Ok(())
     }
 }
