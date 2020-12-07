@@ -1,5 +1,5 @@
 [package]
-name = "dynamodb-mutex-rs"
+name = "dynamodb-mutex"
 version = "0.1.0"
 authors = ["aoyagikouhei <aoyagi.kouhei@gmail.com>"]
 license = "MIT OR Apache-2.0"
