@@ -5,9 +5,9 @@ use rusoto_core::Region;
 pub use rusoto_dynamodb;
 use rusoto_dynamodb::{
     AttributeDefinition, AttributeValue, CreateTableInput, DynamoDb, DynamoDbClient,
-    KeySchemaElement, ProvisionedThroughput, UpdateItemInput, UpdateItemOutput,
+    KeySchemaElement, ProvisionedThroughput, UpdateItemInput,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 static TABLE_NAME: &str = "mutexes";
 static TABLE_KEY: &str = "mutex_code";
@@ -21,12 +21,23 @@ fn make_key(mutex_code: &str) -> HashMap<String, AttributeValue> {
 async fn update(
     client: &DynamoDbClient,
     update_item_inupt: UpdateItemInput,
-) -> Result<UpdateItemOutput, Error> {
+) -> Result<DynamoDbMutexResult, Error> {
     match client.update_item(update_item_inupt).await {
-        Ok(res) => Ok(res),
+        Ok(res) => match res.attributes {
+            Some(value) => {
+                let mutex_status = value.get("mutex_status").unwrap().s.as_ref().unwrap();
+                let updated_at = value.get("updated_at").unwrap().n.as_ref().unwrap();
+                let status = DynamoDbMutexStatus::from_str(&mutex_status)?;
+                Ok(DynamoDbMutexResult::Success(
+                    Some(status),
+                    updated_at.parse().unwrap(),
+                ))
+            }
+            None => Ok(DynamoDbMutexResult::Success(None, 0)),
+        },
         Err(rusoto_core::RusotoError::Service(
             rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
-        )) => Err(Error::ConditionFail),
+        )) => Ok(DynamoDbMutexResult::Failure),
         Err(err) => Err(err.into()),
     }
 }
@@ -98,30 +109,46 @@ impl DynamoDbMutex {
         Ok(())
     }
 
-    pub async fn lock(&self, mutex_code: &str) -> Result<(), Error> {
+    pub async fn lock(&self, mutex_code: &str) -> Result<DynamoDbMutexResult, Error> {
         let now: DateTime<Utc> = Utc::now();
         let now_millis = now.timestamp_millis();
 
         let mut map = HashMap::new();
-        insert_str_attribute(&mut map, ":condion_done_status", &DynamoDbMutexStatus::Done.to_string());
+        insert_str_attribute(
+            &mut map,
+            ":condion_done_status",
+            &DynamoDbMutexStatus::Done.to_string(),
+        );
         insert_num_attribute(
             &mut map,
             ":condion_done_millis",
             now_millis - self.done_after_milli_seconds as i64,
         );
-        insert_str_attribute(&mut map, ":condion_failed_status", &DynamoDbMutexStatus::Failed.to_string());
+        insert_str_attribute(
+            &mut map,
+            ":condion_failed_status",
+            &DynamoDbMutexStatus::Failed.to_string(),
+        );
         insert_num_attribute(
             &mut map,
             ":condion_failed_millis",
             now_millis - self.failed_after_milli_seconds as i64,
         );
-        insert_str_attribute(&mut map, ":condion_running_status", &DynamoDbMutexStatus::Running.to_string());
+        insert_str_attribute(
+            &mut map,
+            ":condion_running_status",
+            &DynamoDbMutexStatus::Running.to_string(),
+        );
         insert_num_attribute(
             &mut map,
             ":condion_running_millis",
             now_millis - self.running_after_milli_seconds as i64,
         );
-        insert_str_attribute(&mut map, ":update_status", &DynamoDbMutexStatus::Running.to_string());
+        insert_str_attribute(
+            &mut map,
+            ":update_status",
+            &DynamoDbMutexStatus::Running.to_string(),
+        );
         insert_num_attribute(&mut map, ":now", now_millis);
 
         let condition = String::from("attribute_not_exists(mutex_status) OR mutex_status = :condion_done_status AND updated_at <= :condion_done_millis OR mutex_status = :condion_failed_status AND updated_at <= :condion_failed_millis OR mutex_status = :condion_running_status AND updated_at <= :condion_running_millis");
@@ -134,11 +161,10 @@ impl DynamoDbMutex {
                 "SET mutex_status = :update_status, updated_at = :now".to_owned(),
             ),
             expression_attribute_values: Some(map),
-            return_values: Some(String::from("NONE")),
+            return_values: Some(String::from("ALL_OLD")),
             ..Default::default()
         };
-        let _ = update(&self.client, input).await?;
-        Ok(())
+        update(&self.client, input).await
     }
 
     pub async fn unlock(&self, mutex_code: &str, status: DynamoDbMutexStatus) -> Result<(), Error> {
@@ -146,7 +172,11 @@ impl DynamoDbMutex {
         let now_millis = now.timestamp_millis();
 
         let mut map = HashMap::new();
-        insert_str_attribute(&mut map, ":condion_status", &DynamoDbMutexStatus::Running.to_string());
+        insert_str_attribute(
+            &mut map,
+            ":condion_status",
+            &DynamoDbMutexStatus::Running.to_string(),
+        );
         insert_str_attribute(&mut map, ":update_status", &status.to_string());
         insert_num_attribute(&mut map, ":now", now_millis);
 
@@ -168,6 +198,13 @@ impl DynamoDbMutex {
     }
 }
 
+#[derive(Debug)]
+pub enum DynamoDbMutexResult {
+    Success(Option<DynamoDbMutexStatus>, u64),
+    Failure,
+}
+
+#[derive(Debug)]
 pub enum DynamoDbMutexStatus {
     Running,
     Done,
@@ -180,7 +217,21 @@ impl ToString for DynamoDbMutexStatus {
             Self::Running => "RUNNING",
             Self::Done => "DONE",
             Self::Failed => "FAILED",
-        }.to_owned()
+        }
+        .to_owned()
+    }
+}
+
+impl FromStr for DynamoDbMutexStatus {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "RUNNING" => Ok(Self::Running),
+            "DONE" => Ok(Self::Done),
+            "FAILED" => Ok(Self::Failed),
+            _ => Err(Error::FailDbValue),
+        }
     }
 }
 
@@ -194,7 +245,8 @@ mod tests {
     async fn it_works() -> Result<(), Error> {
         let mutex = DynamoDbMutex::new(Region::UsEast1, 10000, 10000, 10000, None);
         //mutex.make_table().await?;
-        mutex.lock("test2").await?;
+        let res = mutex.lock("test3").await?;
+        println!("{:?}", res);
         //mutex.unlock("test2", DynamoDbMutexStatus::Done).await?;
         Ok(())
     }
@@ -204,27 +256,33 @@ mod tests {
         let ary = (0..10).collect::<Vec<u32>>();
         let size = ary.len();
         let list = stream::iter(ary);
-        let mutex = Arc::new(DynamoDbMutex::new(Region::UsEast1, 10000, 10000, 10000, None));
-        let res = list.map(|id| {
-            let mutex = Arc::clone(&mutex);
-            tokio::spawn(async move {
-                let res = match mutex.lock("test").await {
-                    Ok(_) => 1,
-                    Err(Error::ConditionFail) => 0,
-                    _ => -1
-                };
-                format!("{}:{}", id, res)
+        let mutex = Arc::new(DynamoDbMutex::new(
+            Region::UsEast1,
+            10000,
+            10000,
+            10000,
+            None,
+        ));
+        let res = list
+            .map(|id| {
+                let mutex = Arc::clone(&mutex);
+                tokio::spawn(async move {
+                    let res = match mutex.lock("test").await {
+                        Ok(DynamoDbMutexResult::Success(_, _)) => 1,
+                        Ok(DynamoDbMutexResult::Failure) => 0,
+                        _ => -1,
+                    };
+                    format!("{}:{}", id, res)
+                })
             })
+            .buffer_unordered(size);
+        res.for_each(|res| async move {
+            match res {
+                Ok(res) => println!("{}", res),
+                Err(e) => eprintln!("Got a tokio::JoinError: {}", e),
+            }
         })
-        .buffer_unordered(size);
-        res
-            .for_each(|res| async move {
-                match res {
-                    Ok(res) => println!("{}", res),
-                    Err(e) => eprintln!("Got a tokio::JoinError: {}", e),
-                }
-            })
-            .await;
+        .await;
         Ok(())
     }
 }
