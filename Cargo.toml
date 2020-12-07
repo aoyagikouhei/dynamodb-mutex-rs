@@ -8,7 +8,7 @@ description = "Use Dymanodb mutex library."
 repository = "https://github.com/aoyagikouhei/dynamodb-mutex-rs"
 keywords = ["dynamodb", "mutex"]
 categories = ["asynchronous"]
-readme = "Readme.md"
+readme = "README.md"
 documentation = "https://docs.rs/dynamodb-mutex"
 
 [dependencies]
