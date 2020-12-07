@@ -1,8 +1,8 @@
 pub mod error;
-use crate::error::Error;
+use crate::error::DynamoDbMutexError as Error;
 use chrono::prelude::*;
 use rusoto_core::Region;
-pub use rusoto_dynamodb;
+pub use rusoto_core;
 use rusoto_dynamodb::{
     AttributeDefinition, AttributeValue, CreateTableInput, DynamoDb, DynamoDbClient,
     KeySchemaElement, ProvisionedThroughput, UpdateItemInput,
@@ -171,9 +171,13 @@ impl DynamoDbMutex {
         update(&self.client, input).await
     }
 
-    pub async fn unlock(&self, mutex_code: &str, status: DynamoDbMutexStatus) -> Result<(), Error> {
+    /// Execute Lock
+    /// mutex_code : target code
+    /// is_success : when success is true
+    pub async fn unlock(&self, mutex_code: &str, is_success: bool) -> Result<(), Error> {
         let now: DateTime<Utc> = Utc::now();
         let now_millis = now.timestamp_millis();
+        let status = if is_success {DynamoDbMutexStatus::Done} else {DynamoDbMutexStatus::Failed};
 
         let mut map = HashMap::new();
         insert_str_attribute(
@@ -201,7 +205,6 @@ impl DynamoDbMutex {
         Ok(())
     }
 }
-
 
 /// MutexResult
 #[derive(Debug)]
@@ -254,7 +257,7 @@ mod tests {
         //mutex.make_table().await?;
         let res = mutex.lock("test3").await?;
         println!("{:?}", res);
-        //mutex.unlock("test2", DynamoDbMutexStatus::Done).await?;
+        //mutex.unlock("test2", true).await?;
         Ok(())
     }
 

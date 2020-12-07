@@ -1,8 +1,5 @@
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("unknown {0}")]
-    Unknown(String),
-
+pub enum DynamoDbMutexError {
     #[error("create table {0}")]
     CreateTable(#[from] rusoto_core::RusotoError<rusoto_dynamodb::CreateTableError>),
 
