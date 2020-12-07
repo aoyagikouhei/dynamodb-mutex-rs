@@ -51,6 +51,7 @@ fn insert_num_attribute(map: &mut HashMap<String, AttributeValue>, key: &str, va
     );
 }
 
+/// Mutex Struct
 pub struct DynamoDbMutex {
     table_name: String,
     client: DynamoDbClient,
@@ -168,6 +169,7 @@ impl DynamoDbMutex {
     }
 }
 
+/// Mutex Status
 pub enum DynamoDbMutexStatus {
     Running,
     Done,
