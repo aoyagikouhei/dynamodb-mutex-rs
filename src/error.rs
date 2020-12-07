@@ -9,6 +9,6 @@ pub enum Error {
     #[error("update item {0}")]
     UpdateItem(#[from] rusoto_core::RusotoError<rusoto_dynamodb::UpdateItemError>),
 
-    #[error("condition fail")]
-    ConditionFail,
+    #[error("fail db value")]
+    FailDbValue,
 }
