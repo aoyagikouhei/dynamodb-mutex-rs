@@ -6,6 +6,9 @@ pub enum DynamoDbMutexError {
     #[error("update item {0}")]
     UpdateItem(#[from] rusoto_core::RusotoError<rusoto_dynamodb::UpdateItemError>),
 
+    #[error("delete item {0}")]
+    DeleteItem(#[from] rusoto_core::RusotoError<rusoto_dynamodb::DeleteItemError>),
+
     #[error("fail db value")]
     FailDbValue,
 }

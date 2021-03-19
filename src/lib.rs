@@ -5,7 +5,7 @@ use rusoto_core::Region;
 pub use rusoto_core;
 use rusoto_dynamodb::{
     AttributeDefinition, AttributeValue, CreateTableInput, DynamoDb, DynamoDbClient,
-    KeySchemaElement, ProvisionedThroughput, UpdateItemInput,
+    KeySchemaElement, ProvisionedThroughput, UpdateItemInput, DeleteItemInput,
 };
 use std::{collections::HashMap, str::FromStr};
 
@@ -204,6 +204,19 @@ impl DynamoDbMutex {
         let _ = update(&self.client, input).await?;
         Ok(())
     }
+
+    /// Remove Mutex Code
+    /// mutex_code : target code
+    pub async fn remove(&self, mutex_code: &str) -> Result<(), Error> {
+        let input = DeleteItemInput {
+            key: make_key(mutex_code),
+            table_name: self.table_name.clone(),
+            return_values: Some(String::from("NONE")),
+            ..Default::default()
+        };
+        let _ = &self.client.delete_item(input).await?;
+        Ok(())
+    }
 }
 
 /// MutexResult
@@ -257,6 +270,7 @@ mod tests {
         //mutex.make_table().await?;
         let res = mutex.lock("test3").await?;
         println!("{:?}", res);
+        let _ = mutex.remove("test3").await?;
         //mutex.unlock("test2", true).await?;
         Ok(())
     }
@@ -293,6 +307,7 @@ mod tests {
             }
         })
         .await;
+        let _ = mutex.remove("test").await?;
         Ok(())
     }
 }
