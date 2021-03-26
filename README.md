@@ -4,8 +4,8 @@ Mutex Lock Using DynamoDB.
 
 [Documentation](https://docs.rs/dynamodb-mutex)
 
-
 ## Changes
+* 0.1.2 updated tokio 1
 * 0.1.1 add remove
 * 0.1.0 first release
 

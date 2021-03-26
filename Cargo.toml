@@ -1,6 +1,6 @@
 [package]
 name = "dynamodb-mutex"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["aoyagikouhei <aoyagi.kouhei@gmail.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -13,10 +13,10 @@ documentation = "https://docs.rs/dynamodb-mutex"
 
 [dependencies]
 chrono = "~0.4.19"
-rusoto_core = "~0.45.0"
-rusoto_dynamodb = "~0.45.0"
-thiserror = "~1.0.22"
+rusoto_core = "~0.46.0"
+rusoto_dynamodb = "~0.46.0"
+thiserror = "~1.0.24"
 
 [dev-dependencies]
-futures = "~0.3.8"
-tokio = {version="~0.2", features=["macros", "rt-core"]}
+futures = "~0.3.13"
+tokio = {version="^1", features=["macros"]}
